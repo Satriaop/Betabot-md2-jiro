@@ -1,0 +1,112 @@
+// Cleaned UPGH-only handler (no tofile)
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+
+let handler = async (m, { conn, args, usedPrefix, command }) => {
+  try {
+    // ⚙️ Konfigurasi GitHub
+    const githubToken = process.env.GH_TOKEN || 'YOUR_TOKEN_HERE';
+    const owner = 'Satriaop';
+    const repo = 'Betabot-md2-jiro';
+    const branch = 'main';
+
+    // ⛔ Periksa Token GitHub
+    if (githubToken === 'YOUR_TOKEN_HERE') {
+        return m.reply('❌ Kesalahan: Token GitHub (GH_TOKEN) belum diatur. Silakan atur token Anda.');
+    }
+
+    // ==== HANYA MENERIMA FILE QUOTED ====
+    let q = m.quoted ? m.quoted : m;
+    let mime = (q.msg  q).mimetype  '';
+
+    if (!mime) {
+      return m.reply(❌ **Silakan reply file yang ingin diupload!**\n\n📌 Contoh:\n${usedPrefix + command} plugins);
+    }
+
+    // Download file
+    let media = await q.download();
+
+    // 🔍 Penentuan Nama File Asli dan Ekstensi
+    
+    // 1. Ambil nama file asli dari pesan (jika ada, e.g., dari document)
+    //    Jika tidak ada (e.g., dari media biasa), ini akan menjadi undefined atau null.
+    let originalFilename = (q.msg  q).fileName  (q.msg || q).caption;
+    
+    // 2. Deteksi ekstensi yang benar
+    let ext = path.extname(originalFilename || '').toLowerCase(); // Coba ambil dari nama asli
+    let mimeExt = mime.split('/')[1] || 'bin'; // Ambil dari MIME
+    
+    // Penanganan ekstensi khusus berdasarkan MIME
+    if (mimeExt === 'javascript') mimeExt = 'js';
+    if (mimeExt === 'plain') mimeExt = 'txt';
+    
+    // Jika tidak ada ekstensi di nama asli, gunakan dari MIME
+    if (!ext || ext === '.bin') {
+        ext = '.' + mimeExt.split(';')[0]; // Ambil bagian sebelum ";"
+    }
+
+    // 3. Tentukan nama file akhir
+    //    Hapus ekstensi dari nama asli untuk menghindari double ekstensi, lalu tambahkan ekstensi yang sudah dikoreksi.
+    let baseName = originalFilename ? originalFilename.replace(new RegExp(${path.extname(originalFilename)}$), '') : ${Date.now()};
+    
+    // 4. Bersihkan nama file (hapus karakter yang tidak valid untuk nama file/URL)
+    let cleanedBaseName = baseName.replace(/[^a-zA-Z0-9._-]/g, '');
+    
+    // Nama file akhir yang akan digunakan
+    let filename = (cleanedBaseName || ${Date.now()}) + ext;
+
+    // Folder dari argumen
+    let folder = args[0] ? args[0].replace(/\/$/, '') : '';
+    let filePath = folder ? ${folder}/${filename} : filename;
+
+    // Check if file exists (get SHA) - Diperlukan untuk UPDATE
+    let sha = undefined;
+    try {
+      const check = await axios.get(https://api.github.com/repos/${owner}/${repo}/contents/${filePath}, {
+        headers: { Authorization: token ${githubToken} }
+      });
+      if (check.data && check.data.sha) sha = check.data.sha;
+    } catch (error) {
+        // Abaikan error 404, itu berarti file belum ada (untuk UPLOAD)
+        if (error.response && error.response.status !== 404) throw error;
+    }
+
+    // Upload to GitHub
+    const uploadURL = https://api.github.com/repos/${owner}/${repo}/contents/${filePath};
+    const content = Buffer.from(media).toString('base64');
+
+    await axios.put(uploadURL, {
+      message: sha ? Replace ${filename} : Upload ${filename},
+      content,
+      branch,
+      sha
+    }, {
+      headers: {
+        'Authorization': token ${githubToken},
+        'Accept': 'application/vnd.github+json'
+      }
+    });
+
+    const rawUrl = https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath};
+
+    m.reply(✅ **Upload Berhasil!**
+
+📄 **Nama:** ${filename}
+📁 **Folder:** ${folder || 'Root'}
+🌍 **Raw URL:**
+\\\
+${rawUrl}
+\\\``);
+
+  } catch (e) {
+    console.errorError:.reply('❌ **Error:** Terjadi kesalahan saat mengunggah. Pastikan *repo* ada, Token GitHubdan **Token GitHub** Anda memiliki izin repo.\n\nDetail Error: ' + e.message);
+  }
+};
+
+handler.help = ['upgh'];
+handler.tags = ['tools'];
+handler.command = ['upgh', 'uploadgh'];
+handler.owner = true;
+
+module.exports = handler;
